@@ -78,11 +78,14 @@ def get_scan_id(scan):
     are found.
     """
     scan_id = None
-    with read_zip(scan) as zip_scan:
-        for item in zip_scan.namelist():
-            if ".dcm" in item:
-                scan_id = read_patient_name(zip_scan, item)
-                break
+    try:
+        with read_zip(scan) as zip_scan:
+            for item in zip_scan.namelist():
+                if ".dcm" in item:
+                    scan_id = read_patient_name(zip_scan, item)
+                    break
+    except:
+        verbose_message("{} is not a readable zipfile".format(os.path.basename(scan)))
 
     return scan_id
 
