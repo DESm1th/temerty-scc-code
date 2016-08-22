@@ -4,7 +4,7 @@ a directory that matches the PatientName field of the dicom headers
 (if such a directory exists).
 
 If a scan is found that has already been extracted to <extract_dir> that scan
-is skipped, so this program is safe to run repeatedly on a directory
+is skipped, so this program is safe to run on a directory
 that may continuously update with new scans.
 
 Usage:
@@ -42,6 +42,16 @@ import contextlib
 
 VERBOSE = False
 
+def error_message(msg, continue_exec=True):
+    print("ERROR: " + msg)
+    sys.stdout.flush()
+    if not continue_exec:
+        sys.exit(1)
+
+def verbose_message(msg):
+    if VERBOSE:
+        print(msg)
+
 def main():
     global VERBOSE
     arguments   = docopt(__doc__)
@@ -54,15 +64,15 @@ def main():
     if path_ext is None:
         path_ext = ""
 
-    scans_dir = os.path.normpath(scans_dir)
-    extract_dir = os.path.normpath(extract_dir)
-    path_ext = os.path.normpath(path_ext)
+    scans_dir = sanitize_path(scans_dir)
+    extract_dir = sanitize_path(extract_dir)
+    path_ext = sanitize_path(path_ext)
 
     for scan in glob.glob("{}/*.zip".format(scans_dir)):
         scan_id = get_scan_id(scan)
 
         if scan_id is None:
-            # Not a scan folder containing dicoms, skip it.
+            # Not a folder containing dicoms, skip it.
             continue
 
         output_path = os.path.join(extract_dir, scan_id, path_ext)
@@ -70,6 +80,20 @@ def main():
         if not already_extracted(scan, output_path):
             verbose_message("Found new scan: {}".format(scan))
             extract_scan(scan, output_path, make_dirs)
+
+def sanitize_path(user_path):
+    """
+    Ensures an absolute and normalized path is always used so path dependent
+    functions don't mysteriously fail
+
+    os.path.abspath is not used, because symbolic links may cause a broken
+    path to be generated.
+    """
+    curr_path = os.environ['PWD']
+    abs_path = os.path.join(curr_path, user_path)
+    clean_path = os.path.normpath(abs_path)
+
+    return clean_path
 
 def get_scan_id(scan):
     """
@@ -124,16 +148,12 @@ def already_extracted(scan, target_dir):
         return True
     return False
 
-def verbose_message(msg):
-    if VERBOSE:
-        print(msg)
-
 def extract_scan(scan, output_path, make_dirs):
     if make_dirs:
         try:
             os.makedirs(output_path)
         except:
-            print("Cannot make {}".format(output_path))
+            error_message("Cannot make {}".format(output_path))
 
     if os.path.isdir(output_path):
         verbose_message("extracting {} to {}".format(os.path.basename(scan),
@@ -141,7 +161,7 @@ def extract_scan(scan, output_path, make_dirs):
         with read_zip(scan) as zip_scan:
             zip_scan.extractall(output_path)
     else:
-        print("{} doesn't exist. Cannot extract {}".format(output_path,
+        error_message("{} doesn't exist. Cannot extract {}".format(output_path,
                 os.path.basename(scan)))
 
 if __name__ == '__main__':

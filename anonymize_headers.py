@@ -84,7 +84,7 @@ def main():
 
     set_headers(input_path, output_path, anon_ID)
 
-    print("Run time: {}".format(time.time() - start_time))
+    verbose("Run time: {}".format(time.time() - start_time))
 
 def sanitize_path(user_path):
     """
@@ -231,7 +231,7 @@ def set_headers(scan, output, ID):
         dcm_path = get_dicom_output_path(dicom, output)
         header.save_as(dcm_path)
 
-    verbose("Finished changing {} header fields to {} ID".format(scan, ID))
+    verbose("Finished changing {} header fields to {}".format(scan, ID))
 
 def get_dicom_output_path(dicom_path, output_path):
     series_path, dcm_name = os.path.split(dicom_path)
