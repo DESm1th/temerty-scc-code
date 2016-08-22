@@ -15,8 +15,8 @@ Arguments:
                         scans to extract (will skip scans that have already
                         been extracted to <extract_dir>)
 
-    <extract_dir>       Location of the pre-existing set of folders to extract
-                        to. Each scan to be extracted must have a folder in
+    <extract_dir>       Location of parent directory for all the extracted scans.
+                        Each scan to be extracted is expected to have a folder in
                         <extract_dir> matching the PatientName field of its
                         dicom headers (unless the --make-folders option is set).
 Options:
@@ -66,7 +66,6 @@ def main():
 
     scans_dir = sanitize_path(scans_dir)
     extract_dir = sanitize_path(extract_dir)
-    path_ext = sanitize_path(path_ext)
 
     for scan in glob.glob("{}/*.zip".format(scans_dir)):
         scan_id = get_scan_id(scan)
