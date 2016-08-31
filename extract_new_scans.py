@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Searches the given directory for zipped scans and extracts the scans to
 a directory that matches the PatientName field of the dicom headers

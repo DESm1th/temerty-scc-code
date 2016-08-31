@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Converts each scan stored under <input_dir> to the formats listed in <formats_csv>.
 Results of conversion are stored in each scan's parent folder under a subdirectory
@@ -120,7 +121,7 @@ def main():
     scan_list = find_all_scan_data(input_dir)
 
     format_df = make_dataframe(formats_csv)
-    
+
     # Will cause program to exit if --blacklist set but file cant be parsed
     blacklist = get_blacklisted_series(blacklist_csv)
 
