@@ -5,15 +5,15 @@
   3. Create private modules for both (see 'Private Modules' section below)
   4. Ensure the some version of the following modules are loaded before running
      the pipeline (in addition to use.own and the datman + qc-pipeline modules):
-     .* Python 2.X (PYTHON/2.7.8-anaconda-2.1.0 is the one I used on the scc)
-     .* AFNI
-     .* FSL
-     .* MINC
+     * Python 2.X (PYTHON/2.7.8-anaconda-2.1.0 is the one I used on the scc)
+     * AFNI
+     * FSL
+     * MINC
   5. Ensure the following packages are installed. "pip install --user <package_name>"
      will install each locally and automatically for the version of python you have
      loaded.
-     .* docopt
-     .* pydicom
+     * docopt
+     * pydicom
   6. For each project to be managed, create a directory for logs and metadata.
      Each needed metadata configuration file has a template in the 'Config Templates'
      section below.
