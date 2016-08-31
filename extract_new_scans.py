@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 """
 Searches the given directory for zipped scans and extracts the scans to
-a directory that matches the PatientName field of the dicom headers
+a folder that matches the PatientName field of the dicom headers
 (if such a directory exists).
 
-If a scan is found that has already been extracted to <extract_dir> that scan
-is skipped, so this program is safe to run on a directory
-that may continuously update with new scans.
+If a given scan has already been extracted that scan will be skipped, so
+this program is safe to run on a <scans_dir> that continuously updates with new
+scans.
 
 Usage:
-    extract-new-scans.py [options] <scans_dir> <extract_dir>
+    extract_new_scans.py [options] <scans_dir> <extract_dir>
 
 Arguments:
-    <scans_dir>         Absolute path to the folder containing all zipped
+    <scans_dir>         Path to the folder containing all zipped
                         scans to extract (will skip scans that have already
                         been extracted to <extract_dir>)
 
@@ -34,6 +34,7 @@ Options:
 
 from docopt import docopt
 import os
+import sys
 import glob
 import dicom as dcm
 import zipfile

@@ -12,7 +12,7 @@ and easily searchable representation of "series-description+:
     <scan_folder_name>_tag_series-number_series-description
 
 Usage:
-    convert-scans.py [options] <input_dir> <formats_csv>
+    convert_scans.py [options] <input_dir> <formats_csv>
 
 Arguments:
     <input_dir>             The full path to the parent directory of all
@@ -78,9 +78,11 @@ import sys
 import glob
 import tempfile
 import shutil
+import re
 import pandas as pd
 import datman as dm
-import re
+import dicom as dcm
+
 
 VERBOSE = False
 DEBUG = False
@@ -118,32 +120,44 @@ def main():
     DEBUG           = arguments['--debug']
     DRYRUN          = arguments['--dry-run']
 
-    scan_list = find_all_scan_data(input_dir)
+    scan_dict = find_all_scan_data(input_dir)
+
+    print(scan_dict)
 
     format_df = make_dataframe(formats_csv)
 
     # Will cause program to exit if --blacklist set but file cant be parsed
     blacklist = get_blacklisted_series(blacklist_csv)
 
-    for scan in scan_list:
-        convert_needed_series(scan, format_df, blacklist)
+    for scan_id in scan_dict.keys():
+        convert_needed_series(scan_id, scan_dict[scan_id], format_df, blacklist)
 
 def find_all_scan_data(input_dir):
     """
-    Returns a list of absolute paths for all scan folders inside input_dir
+    Returns a dictionary of datman style subject ids mapped to an absolute
+    path where the scan folder is stored.
     """
-    scan_folders = []
+    all_scans = {}
     for sub_dir in glob.glob(os.path.join(input_dir, '*')):
-        scan_folder = get_scan_folder_path(sub_dir)
-        if scan_folder is not None:
-            scan_folders.append(scan_folder)
+        dicom = get_dicom(sub_dir)
+        if dicom is None:
+            # sub_dir is not a scan folder of dicoms
+            continue
 
-    return scan_folders
+        scan_id = get_scan_id(dicom)
 
-def get_scan_folder_path(path):
+        if scan_id is None:
+            continue
+
+        scan_path = get_scan_folder_path(dicom)
+        all_scans[scan_id] = scan_path
+
+    return all_scans
+
+def get_dicom(path):
     """
-    If a dicom is found within a subfolder of 'path', returns the absolute
-    path to the scan folder, otherwise returns None
+    If <path> contains at least one dicom in its subdirectories returns the path
+    to the first one found. Otherwise returns None.
     """
     if not os.path.isdir(path):
         return None
@@ -151,10 +165,42 @@ def get_scan_folder_path(path):
     for root, dirs, files in os.walk(path):
         for fname in files:
             if '.dcm' in fname:
-                scan_folder, series_folder = os.path.split(root)
-                return scan_folder
-
+                return os.path.join(root, fname)
     return None
+
+def get_scan_id(dicom_path):
+    """
+    Uses the dicom header to assign a scan id of the format:
+        <StudyDescription>_<InstitutionName>_<PatientID>_01_01
+
+    The 01_01 fields are intended to be <timepoint>_<session#> but is not
+    currently implemented. If <PatientID> has three underscore separated fields,
+    the last two fields will be taken as timepoint and session instead. Currently
+    this is the only way to adjust these values.
+    """
+    try:
+        header = dcm.read_file(dicom_path)
+    except:
+        error("{} is not a readable dicom".format(dicom_path))
+        return None
+
+    scan_id = header.StudyDescription + "_" + header.InstitutionName + "_"
+
+    patient_id = header.PatientID
+    if len(patient_id.split("_")) == 3:
+        scan_id += patient_id
+    else:
+        scan_id += patient_id + "_01_01"
+
+    return scan_id
+
+def get_scan_folder_path(dicom_path):
+    """
+    Returns the path to the scan folder that the given dicom belongs to
+    """
+    series_path, fname = os.path.split(dicom_path)
+    scan_path, series_folder = os.path.split(series_path)
+    return scan_path
 
 def make_dataframe(csv):
     """
@@ -202,14 +248,14 @@ def get_tag_map(format_df):
     tags = format_df['tag'].tolist()
     return dict(zip(patterns, tags))
 
-def convert_needed_series(scan_path, format_df, blacklist):
+def convert_needed_series(scan_id, scan_path, format_df, blacklist):
     """
     Finds series that need conversion and runs the necessary conversion
     programs.
 
     Adapted from datman's xnat-extract.py
     """
-    scanid = os.path.basename(scan_path)
+
     output_folder, _ = os.path.split(scan_path)
 
     for series_folder, header in dm.utils.get_archive_headers(scan_path).items():
@@ -228,7 +274,7 @@ def convert_needed_series(scan_path, format_df, blacklist):
                     " Skipping".format(series_folder, description))
             continue
 
-        output_name = scanid + "_" + "_".join([tag, series_num, mangled_descr])
+        output_name = scan_id + "_" + "_".join([tag, series_num, mangled_descr])
 
         if output_name in blacklist:
             debug("{} in blacklist. Skipping".format(output_name))
