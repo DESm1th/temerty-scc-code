@@ -28,7 +28,7 @@
   the module and the paths on each 'prepend-path' line will have to be adjusted
   to where you saved the clone repositories.
 
-  H3 Datman module template
+  Datman module template
 
         #%Module
         proc ModulesHelp { } {
@@ -44,7 +44,7 @@
 
         prepend-path PYTHONPATH	~/current/datman
 
-   H3 qc-pipeline module template
+   qc-pipeline module template
 
         #%Module
         proc ModulesHelp { } {
@@ -58,7 +58,7 @@
 
 
 # Config Templates
-  H3 project-settings.yml
+  # project-settings.yml
   This file will be unreadable if there are any tabbed spaces. It's a good idea
   to use a text editor that automatically converts tabs to spaces (like atom) to
   edit it to avoid weird errors.
@@ -92,7 +92,7 @@
             - FMAP-8.5:      { Pattern: 'TE85',                   Count: 1}
             - ANI:           { Pattern: 'Fractional-Aniso',       Count: 1}
 
-  H3 exportinfo.csv
+  # exportinfo.csv
   This file will be phased out eventually. It's almost completely redundant
   with the information present in project-settings.yml's ExportInfo, but is
   current still needed as an input to convert_scans.py
@@ -109,7 +109,7 @@
     TE85		          FMAP-8.5	    yes		    no	        no              1
     Aniso		          ANI		        yes		    no	        no              1
 
-  H3 blacklist.csv
+  # blacklist.csv
   Another input to convert_scans.py. Not super useful unless you intend to use
   the rest of the datman pipeline. The series column should contain the datman
   style name of a series that has been blacklist. Reason can be anything, as
