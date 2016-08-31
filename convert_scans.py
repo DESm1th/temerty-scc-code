@@ -120,12 +120,12 @@ def main():
     scan_list = find_all_scan_data(input_dir)
 
     format_df = make_dataframe(formats_csv)
+    
     # Will cause program to exit if --blacklist set but file cant be parsed
     blacklist = get_blacklisted_series(blacklist_csv)
 
     for scan in scan_list:
         convert_needed_series(scan, format_df, blacklist)
-
 
 def find_all_scan_data(input_dir):
     """
