@@ -1,25 +1,25 @@
 #!/usr/bin/env python
 """
-Converts each scan stored under <input_dir> to the formats listed in <formats_csv>.
-Results of conversion are stored in each scan's parent folder under a subdirectory
-named after the format.
+Converts the scans stored in <input_dir> to the formats listed in
+<project_settings>. Results of conversion are stored in each scan's parent
+folder under a subdirectory named after the format.
 
 E.g. /input_dir/parent_folder/scan1/scan1_Fractional_Aniso converted to nifti
 would be stored at /input_dir/parent_folder/nii/scan1_Fractional_Aniso.nii.gz
 
 Output files will be named according to the scheme below, where tag is a short
-and easily searchable representation of "series-description+:
+and easily searchable representation of "series-description":
     <scan_folder_name>_tag_series-number_series-description
 
 Usage:
-    convert_scans.py [options] <input_dir> <formats_csv>
+    convert_scans.py [options] <input_dir> <project_settings>
 
 Arguments:
     <input_dir>             The full path to the parent directory of all
                             scan folders. The scan folders must be unzipped
                             dicoms organized into subdirectories by series.
 
-    <formats_csv>           The full path to the .csv file containing the
+    <project_settings>      The full path to the .yaml/.yml file containing the
                             table of series and formats to convert to. See below
                             for an example of the proper format.
 
@@ -45,30 +45,9 @@ SCAN FOLDER FORMAT
                 *.dcm
             ...
 
-EXPORT TABLE FORMAT
+REQUIREMENTS
 
-    The <formats_csv> should contain a lookup table that supplies a pattern to
-    match against the DICOM SeriesDescription header and corresponding tag name.
-    Additionally, the export table should contain a column for each export
-    filetype with "yes" if the series should be exported to that format.
-
-    For example:
-
-    pattern       tag     export_mnc  export_nii  export_nrrd  count
-    Localiser     LOC     no          no          no           1
-    Calibration   CAL     no          no          no           1
-    Aniso         ANI     no          no          no           1
-    HOS           HOS     no          no          no           1
-    T1            T1      yes         yes         yes          1
-    T2            T2      yes         yes         yes          1
-    FLAIR         FLAIR   yes         yes         yes          1
-    Resting       RES     no          yes         no           1
-    Observe       OBS     no          yes         no           1
-    Imitate       IMI     no          yes         no           1
-    DTI-60        DTI-60  no          yes         yes          3
-    DTI-33-b4500  b4500   no          yes         yes          1
-    DTI-33-b3000  b3000   no          yes         yes          1
-    DTI-33-b1000  b1000   no          yes         yes          1
+    This program requires that the minc-toolkit and slicer be installed.
 
 """
 
@@ -82,6 +61,7 @@ import re
 import pandas as pd
 import datman as dm
 import dicom as dcm
+import yaml
 
 
 VERBOSE = False
@@ -114,7 +94,7 @@ def main():
     global DRYRUN
     arguments       = docopt(__doc__)
     input_dir       = arguments['<input_dir>']
-    formats_csv     = arguments['<formats_csv>']
+    proj_settings   = arguments['<project_settings>']
     blacklist_csv   = arguments['--blacklist']
     VERBOSE         = arguments['--verbose']
     DEBUG           = arguments['--debug']
@@ -122,15 +102,13 @@ def main():
 
     scan_dict = find_all_scan_data(input_dir)
 
-    print(scan_dict)
-
-    format_df = make_dataframe(formats_csv)
+    config = read_yaml_settings(proj_settings)
 
     # Will cause program to exit if --blacklist set but file cant be parsed
     blacklist = get_blacklisted_series(blacklist_csv)
 
     for scan_id in scan_dict.keys():
-        convert_needed_series(scan_id, scan_dict[scan_id], format_df, blacklist)
+        convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
 
 def find_all_scan_data(input_dir):
     """
@@ -202,6 +180,15 @@ def get_scan_folder_path(dicom_path):
     scan_path, series_folder = os.path.split(series_path)
     return scan_path
 
+def read_yaml_settings(yaml_file):
+    try:
+        with open(yaml_file, 'r') as stream:
+            yaml_settings = yaml.load(stream)
+    except:
+        error("{} cannot be read".format(yaml_file), False)
+
+    return yaml_settings
+
 def make_dataframe(csv):
     """
     Attempt to parse a csv into a pandas dataframe and exits the program
@@ -213,21 +200,6 @@ def make_dataframe(csv):
         error("{} does not exist or cannot be read".format(csv),
                continue_exec=False)
     return dataframe
-
-def get_formats_from_dataframe(dataframe):
-    """
-    Returns a list of the formats extracted from the 'export_' column headers
-    """
-    columns = dataframe.columns.values.tolist()
-    formats = [c.split("_")[1] for c in columns if c.startswith("export_")]
-
-    unknown_fmts = [fmt for fmt in formats if fmt not in exporters]
-    if len(unknown_fmts) > 0:
-        error("Unknown formats requested: {}." \
-              " Skipping.".format(", ".join(unknown_fmts)))
-        formats = list(set(formats) - set(unknown_fmts))
-
-    return formats
 
 def get_blacklisted_series(blacklist_csv):
     """
@@ -243,12 +215,7 @@ def get_blacklisted_series(blacklist_csv):
 
     return blacklisted_series
 
-def get_tag_map(format_df):
-    patterns = format_df['pattern'].tolist()
-    tags = format_df['tag'].tolist()
-    return dict(zip(patterns, tags))
-
-def convert_needed_series(scan_id, scan_path, format_df, blacklist):
+def convert_needed_series(scan_id, scan_path, project_config, blacklist):
     """
     Finds series that need conversion and runs the necessary conversion
     programs.
@@ -257,36 +224,31 @@ def convert_needed_series(scan_id, scan_path, format_df, blacklist):
     """
 
     output_folder, _ = os.path.split(scan_path)
+    export_info = get_export_info(scan_id, project_config)
 
     for series_folder, header in dm.utils.get_archive_headers(scan_path).items():
-        # parse header
         description = str(header.get("SeriesDescription"))
         mangled_descr = mangle_description(description)
         series_num = str(header.get("SeriesNumber")).zfill(2)
 
-        # Find tag and the row of the csv with export info related to it
-        tag_map = get_tag_map(format_df)
-        tag = dm.utils.guess_tag(mangled_descr, tag_map)
-
-        if tag is None:
+        series_info = find_series_info(mangled_descr, export_info)
+        if series_info is None:
             verbose("No matching export patterns for "\
                     "{} with description: {}."\
                     " Skipping".format(series_folder, description))
             continue
 
+        tag = series_info.keys()[0]
         output_name = scan_id + "_" + "_".join([tag, series_num, mangled_descr])
 
         if output_name in blacklist:
             debug("{} in blacklist. Skipping".format(output_name))
             continue
 
-        formats = get_formats_from_dataframe(format_df)
-        tag_row = format_df[format_df['tag'] == tag]
-
+        formats = series_info[tag]['Formats']
         for fmt in formats:
-            if all(tag_row['export_' + fmt] == 'no'):
-                debug("{}: export_{} set to 'no' for tag {}. Skipping".format(
-                        output_name, fmt, tag))
+            if fmt not in exporters.keys():
+                error("Unknown format {} requested for {}. Skipping.".format(fmt, output_name))
                 continue
 
             output_dir = os.path.join(output_folder, fmt)
@@ -315,6 +277,44 @@ def mangle_description(description):
 
         return mangled
     return ""
+
+def get_export_info(scan_id, project_config):
+    """
+    Returns the ExportInfo for the site matching the given scan_id. May
+    return None if no matching site is found.
+    """
+    export_info = None
+    for site_config in project_config['Sites']:
+        site = site_config.keys()[0]
+        site_tag = "_" + site + "_"
+        if site_tag in scan_id:
+            export_info = site_config[site]['ExportInfo']
+            break
+    return export_info
+
+def find_series_info(mangled_description, export_info):
+    """
+    Finds the line, if any, in export_info that applies to the given series based
+    on a match to the mangled_description from the header.
+    """
+    series_info = None
+
+    for line in export_info:
+        tag = line.keys()[0]
+        tag_info = line[tag]
+        pattern = tag_info['Pattern']
+
+        if isinstance(pattern, list):
+            for string_descr in pattern:
+                if string_descr in mangled_description:
+                    series_info = line
+                    break
+        else:
+            if pattern in mangled_description:
+                series_info = line
+                break
+
+    return series_info
 
 def export_mnc_command(seriesdir,outputdir,file_name):
     """
