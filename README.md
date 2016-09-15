@@ -95,8 +95,8 @@
               - FMAP-6.5:      { Pattern: 'TE65',             Formats: [nii],           Count: 1}
               - FMAP-8.5:      { Pattern: 'TE85',             Formats: [nii],           Count: 1}
               - ANI:           { Pattern: 'Fractional-Aniso', Formats: [nii],           Count: 1}
-
-  ### blacklist.csv
+              
+  blacklist.csv:
   Another input to convert_scans.py. Not super useful unless you intend to use
   the rest of the datman pipeline. The series column should contain the datman
   style name of a series that has been blacklist. Reason can be anything, as
