@@ -21,7 +21,7 @@ Options:
     --debug                 Be extra chatty
     --dry-run               Don't actually do any work
 
-DETAILS
+REQUIREMENTS
 
     This program requires the AFNI toolkit to be available, as well as NIFTI
     scans for each acquisition to be QC'd.
