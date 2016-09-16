@@ -3,7 +3,7 @@
 Produces QC documents for each exam. Adapted from datman/bin/qc_html.py
 
 Usage:
-    qc-html.py [options] <nii_folder> <project_settings> <output_dir>
+    qc_pages.py [options] <nii_folder> <project_settings> <output_dir>
 
 Arguments:
     <nii_folder>            The path to a folder of nifti images for one participant
@@ -213,8 +213,6 @@ def montage(image, name, filename, pic, cmaptype='grey', mode='3d', minval=None,
 
         image = np.transpose(image, (2,0,1))
         image = np.rot90(image, 2)
-        steps = np.round(np.linspace(0,np.shape(image)[0]-2, 36)) # coronal plane
-        factor = 6
 
         # use bounding box (submitted or found) to crop extra-brain regions
         if box == None:
@@ -222,7 +220,10 @@ def montage(image, name, filename, pic, cmaptype='grey', mode='3d', minval=None,
         elif box.shape != (3,2): # if we did, ensure it is the right shape
             logging.getLogger().error('ERROR: Bounding box should have shape = (3,2).')
             raise ValueError
+
         image = image[box[0,0]:box[0,1], box[1,0]:box[1,1], box[2,0]:box[2,1]]
+        steps = np.round(np.linspace(0,np.shape(image)[0]-2, 36)) # coronal plane
+        factor = 6
 
     if mode == '4d':
         image = reorient_4d_image(image)
