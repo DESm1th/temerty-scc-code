@@ -1,22 +1,21 @@
 #Set up:
 
   1. Clone this repo
-  2. Clone the [Datman repo](https://github.com/TIGRLab/datman)
-  3. Create private modules for both (see 'Private Modules' section below)
-  4. Ensure the some version of the following modules are loaded before running
-     the pipeline (in addition to use.own and the datman + qc-pipeline modules):
+  2. Create a private module for it
+  3. Ensure the some version of the following modules are loaded before running
+     the pipeline (in addition to use.own and the qc-pipeline module):
      * Python 2.X (PYTHON/2.7.8-anaconda-2.1.0 is the one I used on the scc)
      * AFNI
      * FSL
      * minc-toolkit
      * mricron
      * slicer
-  5. Ensure the following packages are installed. "pip install --user <package_name>"
+  4. Ensure the following packages are installed. "pip install --user <package_name>"
      will install each locally and automatically for the version of python you have
      loaded.
      * docopt
      * pydicom
-  6. For each project to be managed, create a directory for logs and metadata.
+  5. For each project to be managed, create a directory for logs and metadata.
      Each needed metadata configuration file has a template in the 'Config Templates'
      section below.
 
@@ -30,21 +29,6 @@
   the module and the paths on each 'prepend-path' line will have to be adjusted
   to where you saved the clone repositories.
 
-  Datman module template
-
-        #%Module
-        proc ModulesHelp { } {
-        	puts stderr "This module loads datman (https://github.com/TIGRLab/datman)"
-        }
-
-        # Load dependencies
-        module load PYTHON/2.7.8-anaconda-2.1.0
-
-        prepend-path PATH 	~/current/datman
-        prepend-path PATH 	~/current/datman/bin
-        prepend-path PATH	  ~/current/datman/datman
-
-        prepend-path PYTHONPATH	~/current/datman
 
    qc-pipeline module template
 
@@ -60,7 +44,9 @@
 
 
 # Config Templates
+
   project-settings.yml:
+
   This file will be unreadable if there are any tabbed white space. It's a good idea
   to use a text editor that can automatically convert tabs to spaces (like atom) to
   edit it to avoid weird errors.
@@ -95,8 +81,9 @@
               - FMAP-6.5:      { Pattern: 'TE65',             Formats: [nii],           Count: 1}
               - FMAP-8.5:      { Pattern: 'TE85',             Formats: [nii],           Count: 1}
               - ANI:           { Pattern: 'Fractional-Aniso', Formats: [nii],           Count: 1}
-              
+
   blacklist.csv:
+  
   Another input to convert_scans.py. Not super useful unless you intend to use
   the rest of the datman pipeline. The series column should contain the datman
   style name of a series that has been blacklist. Reason can be anything, as

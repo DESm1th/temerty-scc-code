@@ -19,11 +19,10 @@ Options:
     --rewrite               Rewrite the html of an existing qc page
     --verbose               Be chatty
     --debug                 Be extra chatty
-    --dry-run               Don't actually do any work
 
 REQUIREMENTS
 
-    This program requires the AFNI toolkit to be available, as well as NIFTI
+    This program requires the AFNI toolkit and FSL to be available, as well as NIFTI
     scans for each acquisition to be QC'd.
 
 """
@@ -33,445 +32,26 @@ import glob
 import sys
 import logging
 import numpy as np
-import scipy as sp
-import scipy.signal as sig
 import nibabel as nib
-import datman as dm
-import datman.utils
-import datman.scanid
+import datman_utils as dm_utils
+import datman_scanid as dm_scanid
 import subprocess as proc
-from copy import copy
 from docopt import docopt
 import re
 import tempfile
 import yaml
 import pandas as pd
-
-import matplotlib
-matplotlib.use('Agg')   # Force matplotlib to not use any Xwindows backend
-import matplotlib.pyplot as plt
+import img_utils as imgs
 
 #########################################################
 # Global constants.
-DRYRUN = False
-FIGDPI = 144
 REWRITE = False
 LOGGER = None
 DATMAN_ORG = False
 
 #########################################################
 
-class Document:
-    pass
-
-def fslslicer_pic(fpath,pic,slicergap,picwidth):
-    """
-    Uses FSL's slicer function to generate a pretty montage png from a nifti file
-    Then adds a link to that png in the qcthml
-
-    Usage:
-        add_slicer_pic(fpath,slicergap,picwidth,qchtml)
-
-        fpath       -- submitted image file name
-        slicergap   -- int of "gap" between slices in Montage
-        picwidth    -- width (in pixels) of output image
-        pic         -- fullpath to for output image
-    """
-    run("slicer {} -S {} {} {}".format(fpath,slicergap,picwidth,pic))
-
-def load_masked_data(func, mask):
-    """
-    Accepts 'functional.nii.gz' and 'mask.nii.gz', and returns a voxels x
-    timepoints matrix of the functional data in non-zero mask locations.
-    """
-    func = nib.load(func).get_data()
-    mask = nib.load(mask).get_data()
-
-    mask = mask.reshape(mask.shape[0]*mask.shape[1]*mask.shape[2])
-    func = func.reshape(func.shape[0]*func.shape[1]*func.shape[2],
-                                                    func.shape[3])
-
-    # find within-brain timeseries
-    idx = np.where(mask > 0)[0]
-    func = func[idx, :]
-
-    return func
-
-def bounding_box(filename):
-    """
-    Finds a box that only includes all nonzero voxels in a 3D image. Output box
-    is represented as 3 x 2 numpy array with rows denoting x, y, z, and columns
-    denoting stand and end slices.
-
-    Usage:
-        box = bounding_box(filename)
-    """
-
-    # find 3D bounding box
-    box = np.zeros((3,2))  # init bounding box
-    flag = 0  # ascending
-
-    for i, dim in enumerate(filename.shape): # loop through (x, y, z)
-
-        # ascending search
-        while flag == 0:
-            for dim_test in np.arange(dim):
-
-                # get sum of all values in each slice
-                if i == 0:   test = np.sum(filename[dim_test, :, :])
-                elif i == 1: test = np.sum(filename[:, dim_test, :])
-                elif i == 2: test = np.sum(filename[:, :, dim_test])
-
-                # if slice is nonzero, set starting bound, switch to descending
-                if test >= 1:
-                    box[i, 0] = dim_test
-                    flag = 1
-                    break
-
-        # descending search
-        while flag == 1:
-            for dim_test in np.arange(dim):
-
-                dim_test = dim-dim_test - 1  # we have to reverse things
-
-                # get sum of all values in each slice
-                if i == 0:   test = np.sum(filename[dim_test, :, :])
-                elif i == 1: test = np.sum(filename[:, dim_test, :])
-                elif i == 2: test = np.sum(filename[:, :, dim_test])
-
-                # if slice is nonzero, set ending bound, switch to ascending
-                if test >= 1:
-                    box[i, 1] = dim_test
-                    flag = 0
-                    break
-
-    return box
-
-def reorient_4d_image(image):
-    """
-    Reorients the data to radiological, one TR at a time
-    """
-    for i in np.arange(image.shape[3]):
-
-        if i == 0:
-            newimage = np.transpose(image[:, :, :, i], (2,0,1))
-            newimage = np.rot90(newimage, 2)
-
-        elif i == 1:
-            tmpimage = np.transpose(image[:, :, :, i], (2,0,1))
-            tmpimage = np.rot90(tmpimage, 2)
-            newimage = np.concatenate((newimage[...,np.newaxis],
-                                       tmpimage[...,np.newaxis]), axis=3)
-
-        else:
-            tmpimage = np.transpose(image[:, :, :, i], (2,0,1))
-            tmpimage = np.rot90(tmpimage, 2)
-            newimage = np.concatenate((newimage,
-                                       tmpimage[...,np.newaxis]), axis=3)
-
-    image = copy(newimage)
-
-    return image
-
-###############################################################################
-# PLOTTERS / CALCULATORS
-
-def montage(image, name, filename, pic, cmaptype='grey', mode='3d', minval=None, maxval=None, box=None):
-    """
-    Creates a montage of images displaying a image set on top of a grayscale
-    image.
-
-    Generally, this will be used to plot an image (of type 'name') that was
-    generated from the original file 'filename'. So if we had an SNR map
-    'SNR.nii.gz' from 'fMRI.nii.gz', we would submit everything to montage
-    as so:
-
-        montage('SNR.nii.gz', 'SNR', 'EPI.nii.gz', 'EPI_SNR.png')
-
-    Usage:
-        montage(image, name, filename, pic)
-
-        image    -- submitted image file name
-        name     -- name of the printout (e.g, SNR map, t-stats, etc.)
-        cmaptype -- 'redblue', 'hot', or 'gray'.
-        minval   -- colormap minimum value as a % (None == 'auto')
-        maxval   -- colormap maximum value as a % (None == 'auto')
-        mode     -- '3d' (prints through space) or '4d' (prints through time)
-        filename -- qc image file name
-        picpath  -- Path to save the figure .png to
-        box      -- a (3,2) tuple that describes the start and end voxel
-                    for x, y, and z, respectively. If None, we find it ourselves.
-    """
-    image = str(image) # input checks
-    opath = os.path.dirname(image) # grab the image folder
-    output = str(image)
-    image = nib.load(image).get_data() # load in the daterbytes
-
-    if mode == '3d':
-        if len(image.shape) > 3: # if image is 4D, only keep the first time-point
-            image = image[:, :, :, 0]
-
-        image = np.transpose(image, (2,0,1))
-        image = np.rot90(image, 2)
-
-        # use bounding box (submitted or found) to crop extra-brain regions
-        if box == None:
-            box = bounding_box(image) # get the image bounds
-        elif box.shape != (3,2): # if we did, ensure it is the right shape
-            logging.getLogger().error('ERROR: Bounding box should have shape = (3,2).')
-            raise ValueError
-
-        image = image[box[0,0]:box[0,1], box[1,0]:box[1,1], box[2,0]:box[2,1]]
-        steps = np.round(np.linspace(0,np.shape(image)[0]-2, 36)) # coronal plane
-        factor = 6
-
-    if mode == '4d':
-        image = reorient_4d_image(image)
-        midslice = np.floor((image.shape[2]-1)/2) # print a single plane across all slices
-        factor = np.ceil(np.sqrt(image.shape[3])) # print all timepoints
-        factor = factor.astype(int)
-
-    # colormapping -- set value
-    if cmaptype == 'redblue': cmap = plt.cm.RdBu_r
-    elif cmaptype == 'hot': cmap = plt.cm.OrRd
-    elif cmaptype == 'gray': cmap = plt.cm.gray
-    else:
-        logging.getLogger().debug('No valid colormap supplied, default = greyscale.')
-        cmap = plt.cm.gray
-
-    # colormapping -- set range
-    if minval == None:
-        minval = np.min(image)
-    else:
-        minval = np.min(image) + ((np.max(image) - np.min(image)) * minval)
-
-    if maxval == None:
-        maxval = np.max(image)
-    else:
-        maxval = np.max(image) * maxval
-
-    cmap.set_bad('g', 0)  # value for transparent pixels in the overlay
-
-    fig, axes = plt.subplots(nrows=factor, ncols=factor, facecolor='white')
-    for i, ax in enumerate(axes.flat):
-
-        if mode == '3d':
-            im = ax.imshow(image[steps[i], :, :], cmap=cmap, interpolation='nearest', vmin=minval, vmax=maxval)
-            ax.set_frame_on(False)
-            ax.axes.get_xaxis().set_visible(False)
-            ax.axes.get_yaxis().set_visible(False)
-
-        elif mode == '4d' and i < image.shape[3]:
-            im = ax.imshow(image[:, :, midslice, i], cmap=cmap, interpolation='nearest')
-            ax.set_frame_on(False)
-            ax.axes.get_xaxis().set_visible(False)
-            ax.axes.get_yaxis().set_visible(False)
-
-        elif mode == '4d' and i >= image.shape[3]:
-            ax.set_axis_off() # removes extra axes from plot
-
-    plt.subplots_adjust(left=0, right=0.85, top=0.9, bottom=0)
-
-    cbar_ax = fig.add_axes([0.88, 0.10, 0.05, 0.7])
-    cb = fig.colorbar(im, cax=cbar_ax)
-    fig.suptitle(filename + '\n' + name, size=10)
-
-    fig.savefig(pic, format='png', dpi=FIGDPI)
-    plt.close()
-
-def find_epi_spikes(image, filename, pic, ftype, bvec=None):
-
-    """
-    Plots, for each axial slice, the mean instensity over all TRs.
-    Strong deviations are an indication of the presence of spike
-    noise.
-
-    If bvec is supplied, we remove all time points that are 0 in the bvec
-    vector.
-
-    Usage:
-        find_epi_spikes(image, filename, picpath)
-
-        image    -- submitted image file name
-        filename -- qc image file name
-        pic      -- path to save the .png figure to
-        ftype    -- 'fmri' or 'dti'
-        bvec     -- numpy array of bvecs (for finding direction = 0)
-
-    """
-
-    image = str(image)             # input checks
-    opath = os.path.dirname(image) # grab the image folder
-
-    # load in the daterbytes
-    output = str(image)
-    image = nib.load(image).get_data()
-    image = reorient_4d_image(image)
-
-    x = image.shape[1]
-    y = image.shape[2]
-    z = image.shape[0]
-    t = image.shape[3]
-
-    # initialize the spikecount
-    spikecount = 0
-
-    # find the most square set of factors for n_trs
-    factor = np.ceil(np.sqrt(z))
-    factor = factor.astype(int)
-
-    fig, axes = plt.subplots(nrows=factor, ncols=factor, facecolor='white')
-
-    # sets the bounds of the image
-    c1 = np.round(x*0.25)
-    c2 = np.round(x*0.75)
-
-    # for each axial slice
-    for i, ax in enumerate(axes.flat):
-        if i < z:
-
-            v_mean = np.array([])
-            v_sd = np.array([])
-
-            # find the mean, STD, of each dir and concatenate w. vector
-            for j in np.arange(t):
-
-                # gives us a subset of the image
-                sample = image[i, c1:c2, c1:c2, j]
-                mean = np.mean(sample)
-                sd = np.std(sample)
-
-                if j == 0:
-                    v_mean = copy(mean)
-                    v_sd = copy(sd)
-                else:
-                    v_mean = np.hstack((v_mean, mean))
-                    v_sd = np.hstack((v_sd, sd))
-
-            # crop out b0 images
-            if bvec is None:
-                v_t = np.arange(t)
-            else:
-                idx = np.where(bvec != 0)[0]
-                v_mean = v_mean[idx]
-                v_sd = v_sd[idx]
-                v_t = np.arange(len(idx))
-
-            # keep track of spikes
-            v_spikes = np.where(v_mean > np.mean(v_mean)+np.mean(v_sd))[0]
-            spikecount = spikecount + len(v_spikes)
-
-            ax.plot(v_mean, color='black')
-            ax.fill_between(v_t, v_mean-v_sd, v_mean+v_sd, alpha=0.5, color='black')
-            ax.set_frame_on(False)
-            ax.axes.get_xaxis().set_visible(False)
-            ax.axes.get_yaxis().set_visible(False)
-        else:
-            ax.set_axis_off()
-
-    plt.subplots_adjust(left=0, right=1, top=0.9, bottom=0)
-    plt.suptitle('{}\nDTI Slice/TR Wise Abnormalities'.format(filename), size=10)
-
-
-    fig.savefig(pic, format='png', dpi=FIGDPI)
-    plt.close()
-
-def fmri_plots(func, mask, f, filename, pic, cur=None):
-    """
-    Calculates and plots:
-         + Mean and SD of normalized spectra across brain.
-         + Framewise displacement (mm/TR) of head motion.
-         + Mean correlation from 10% of the in-brain voxels.
-         + EMPTY ADD KEWL PLOT HERE PLZ.
-
-    """
-    ##############################################################################
-    # spectra
-    plt.subplot(2,2,1)
-    func = load_masked_data(func, mask)
-    spec = sig.detrend(func, type='linear')
-    spec = sig.periodogram(spec, fs=0.5, return_onesided=True, scaling='density')
-    freq = spec[0]
-    spec = spec[1]
-    sd = np.nanstd(spec, axis=0)
-    mean = np.nanmean(spec, axis=0)
-
-    plt.plot(freq, mean, color='black', linewidth=2)
-    plt.plot(freq, mean + sd, color='black', linestyle='-.', linewidth=0.5)
-    plt.plot(freq, mean - sd, color='black', linestyle='-.', linewidth=0.5)
-    plt.title('Whole-brain spectra mean, SD', size=6)
-    plt.xticks(size=6)
-    plt.yticks(size=6)
-    plt.xlabel('Frequency (Hz)', size=6)
-    plt.ylabel('Power', size=6)
-    plt.xticks([])
-
-    ##############################################################################
-    # framewise displacement
-    plt.subplot(2,2,2)
-    fd_thresh = 0.5
-    f = np.genfromtxt(f)
-    f[:,0] = np.radians(f[:,0]) * 50 # 50 = head radius, need not be constant.
-    f[:,1] = np.radians(f[:,1]) * 50 # 50 = head radius, need not be constant.
-    f[:,2] = np.radians(f[:,2]) * 50 # 50 = head radius, need not be constant.
-    f = np.abs(np.diff(f, n=1, axis=0))
-    f = np.sum(f, axis=1)
-    t = np.arange(len(f))
-
-    plt.plot(t, f.T, lw=1, color='black')
-    plt.axhline(y=fd_thresh, xmin=0, xmax=len(t), color='r')
-    plt.xlim((-3, len(t) + 3)) # this is in TRs
-    plt.ylim(0, 2) # this is in mm/TRs
-    plt.xticks(size=6)
-    plt.yticks(size=6)
-    plt.xlabel('TR', size=6)
-    plt.ylabel('Framewise displacement (mm/TR)', size=6)
-    plt.title('Head motion', size=6)
-
-    if cur:
-        fdtot = np.sum(f) # total framewise displacement
-        fdnum = len(np.where(f > fd_thresh)[0]) # number of TRs above 0.5 mm FD
-
-        subj = filename.split('_')[0:4]
-        subj = '_'.join(subj)
-
-        insert_value(cur, 'fmri', subj, 'fdtot', fdtot)
-        insert_value(cur, 'fmri', subj, 'fdnum', fdnum)
-
-    ##############################################################################
-    # whole brain correlation
-    plt.subplot(2,2,3)
-    idx = np.random.choice(func.shape[0], func.shape[0]/10, replace=False)
-    corr = func[idx, :]
-    corr = sp.corrcoef(corr, rowvar=1)
-    mean = np.mean(corr, axis=None)
-    std = np.std(corr, axis=None)
-
-    im = plt.imshow(corr, cmap=plt.cm.RdBu_r, interpolation='nearest', vmin=-1, vmax=1)
-    plt.xlabel('Voxel', size=6)
-    plt.ylabel('Voxel', size=6)
-    plt.xticks([])
-    plt.yticks([])
-    cb = plt.colorbar(im)
-    cb.set_label('Correlation (r)', labelpad=0, y=0.5, size=6)
-    for tick in cb.ax.get_yticklabels():
-        tick.set_fontsize(6)
-    plt.title('Whole-brain r mean={}, SD={}'.format(str(mean), str(std)), size=6)
-
-    if cur:
-        subj = filename.split('_')[0:4]
-        subj = '_'.join(subj)
-
-        insert_value(cur, 'fmri', subj, 'corrmean', mean)
-        insert_value(cur, 'fmri', subj, 'corrsd', std)
-
-    plt.suptitle(filename)
-    plt.savefig(pic, format='png', dpi=FIGDPI)
-    plt.close()
-
-
 def main():
-    global DRYRUN
     global REWRITE
     global LOGGER
     global DATMAN_ORG
@@ -483,7 +63,6 @@ def main():
     DATMAN_ORG  = arguments['--datman-structure']
     verbose     = arguments['--verbose']
     debug       = arguments['--debug']
-    DRYRUN      = arguments['--dry-run']
     REWRITE     = arguments['--rewrite']
 
     LOGGER = set_up_logging(verbose, debug)
@@ -504,7 +83,7 @@ def set_up_logging(verbose, debug):
     logging.basicConfig(level=logging.WARN,
             format="[%(name)s] %(levelname)s: %(message)s")
 
-    logger = logging.getLogger(os.path.basename(__file__))
+    logger = logging.getLogger('qc_pages')
 
     if verbose:
         logger.setLevel(logging.INFO)
@@ -577,9 +156,6 @@ def remove_nifti_extension(file_name):
     return file_name.replace(".nii", "").replace(".gz", "")
 
 def write_qc_page(input_path, output_path, subject_id, config):
-    """
-
-    """
     html_file = os.path.join(output_path, 'qc_{}.html'.format(subject_id))
 
     if os.path.exists(html_file) and not REWRITE:
@@ -773,7 +349,7 @@ def write_qc_page_contents(qc_page, input_path, output_path, exportinfo, subject
             continue
         curr_file = os.path.join(input_path, file_name)
         logging.getLogger().info("QC scan {}".format(curr_file))
-        ident, tag, series, description = dm.scanid.parse_filename(curr_file)
+        ident, tag, series, description = dm_scanid.parse_filename(curr_file)
         qc_page.write('<h2 id="{}">{}</h2>\n'.format(exportinfo.loc[idx,'bookmark'], file_name))
 
         if tag not in QC_HANDLERS:
@@ -803,7 +379,7 @@ def get_log_contents(log_path, file_pattern):
     return log_contents
 
 def add_header_checks(file_path, qc_page, log_data):
-    filestem = os.path.basename(file_path).replace(dm.utils.get_extension(file_path),'')
+    filestem = os.path.basename(file_path).replace(dm_utils.get_extension(file_path),'')
     lines = [re.sub('^.*?: *','',line) for line in log_data if filestem in line]
     if not lines:
         return
@@ -818,7 +394,7 @@ def add_header_checks(file_path, qc_page, log_data):
     qc_page.write('</table>\n')
 
 def add_bvec_checks(fpath, qchtml, logdata):
-    filestem = os.path.basename(fpath).replace(dm.utils.get_extension(fpath),'')
+    filestem = os.path.basename(fpath).replace(dm_utils.get_extension(fpath),'')
     lines = [re.sub('^.*'+filestem,'',line) for line in logdata if filestem in line]
     if not lines:
         return
@@ -898,24 +474,24 @@ def fmri_qc(fpath, qcpath, qchtml):
 
     # output BOLD-contrast qc-pic
     BOLDpic = os.path.join(qcpath, filestem + '_BOLD.png')
-    montage(fpath, 'BOLD-contrast', filename, BOLDpic, maxval=0.75)
+    imgs.montage(fpath, 'BOLD-contrast', filename, BOLDpic, maxval=0.75)
     add_pic_to_html(qchtml, BOLDpic)
 
     # output fMRI plots
     fMRIplotspic = os.path.join(qcpath, filestem + '_fmriplots.png')
-    fmri_plots('{t}/mcorr.nii.gz'.format(t=tmpdir),
+    imgs.fmri_plots('{t}/mcorr.nii.gz'.format(t=tmpdir),
                      '{t}/mask.nii.gz'.format(t=tmpdir),
                      '{t}/motion.1D'.format(t=tmpdir), filename, fMRIplotspic)
     add_pic_to_html(qchtml, fMRIplotspic)
 
     SNRpic = os.path.join(qcpath,filestem + '_SNR.png')
-    montage('{t}/sfnr.nii.gz'.format(t=tmpdir),
+    imgs.montage('{t}/sfnr.nii.gz'.format(t=tmpdir),
                   'SFNR', filename, SNRpic, cmaptype='hot', maxval=0.75)
     add_pic_to_html(qchtml, SNRpic)
 
 
     Spikespic = os.path.join(qcpath,filestem + '_Spikes.png')
-    find_epi_spikes(fpath, filename, Spikespic, 'fmri')
+    imgs.find_epi_spikes(fpath, filename, Spikespic)
     add_pic_to_html(qchtml, Spikespic)
 
     run('rm -r {}'.format(tmpdir))
@@ -979,8 +555,8 @@ def dti_qc(fpath, qcpath, qchtml):
     filename = os.path.basename(fpath)
     filestem = nifti_basename(fpath)
     directory = os.path.dirname(fpath)
-    bvecfile = fpath[:-len(datman.utils.get_extension(fpath))] + ".bvec"
-    bvalfile = fpath[:-len(datman.utils.get_extension(fpath))] + ".bval"
+    bvecfile = fpath[:-len(dm_utils.get_extension(fpath))] + ".bvec"
+    bvalfile = fpath[:-len(dm_utils.get_extension(fpath))] + ".bval"
 
     # load in bvec file
     logging.getLogger().debug("fpath = {}, bvec = {}".format(fpath, bvecfile))
@@ -993,16 +569,31 @@ def dti_qc(fpath, qcpath, qchtml):
     bvec = np.sum(bvec, axis=0)
 
     B0pic = os.path.join(qcpath,filestem + '_B0.png')
-    montage(fpath, 'B0-contrast', filename, B0pic, maxval=0.25)
+    imgs.montage(fpath, 'B0-contrast', filename, B0pic, maxval=0.25)
     add_pic_to_html(qchtml, B0pic)
 
     dti4dpic = os.path.join(qcpath,filestem + '_dti4d.png')
-    montage(fpath, 'DTI Directions', filename, dti4dpic, mode='4d', maxval=0.25)
+    imgs.montage(fpath, 'DTI Directions', filename, dti4dpic, mode='4d', maxval=0.25)
     add_pic_to_html(qchtml, dti4dpic)
 
     spikespic = os.path.join(qcpath, filestem + '_spikes.png')
-    find_epi_spikes(fpath, filename, spikespic, 'dti', bvec=bvec)
+    imgs.find_epi_spikes(fpath, filename, spikespic, bvec=bvec)
     add_pic_to_html(qchtml, spikespic)
+
+def fslslicer_pic(fpath,pic,slicergap,picwidth):
+    """
+    Uses FSL's slicer function to generate a pretty montage png from a nifti file
+    Then adds a link to that png in the qcthml
+
+    Usage:
+        add_slicer_pic(fpath,slicergap,picwidth,qchtml)
+
+        fpath       -- submitted image file name
+        slicergap   -- int of "gap" between slices in Montage
+        picwidth    -- width (in pixels) of output image
+        pic         -- fullpath to for output image
+    """
+    run("slicer {} -S {} {} {}".format(fpath,slicergap,picwidth,pic))
 
 def add_pic_to_html(qchtml, pic):
     '''
@@ -1024,27 +615,21 @@ def nifti_basename(fpath):
 
 def makedirs(path):
     logging.getLogger().debug("makedirs: {}".format(path))
-    if not DRYRUN: os.makedirs(path)
+    os.makedirs(path)
 
 def run(cmd, error_message=None):
 
     logging.getLogger().debug("exec: {}".format(cmd))
+    p = proc.Popen(cmd, shell=True, stdout=proc.PIPE, stderr=proc.PIPE)
+    out, err = p.communicate()
+    if p.returncode != 0:
 
-    if not DRYRUN:
-        p = proc.Popen(cmd, shell=True, stdout=proc.PIPE, stderr=proc.PIPE)
-        out, err = p.communicate()
-        if p.returncode != 0:
+        if error_message is None:
+            error_message = "Error {} while executing: {}".format(p.returncode, cmd)
 
-            if error_message is None:
-                error_message = "Error {} while executing: {}".format(p.returncode, cmd)
-
-            logging.getLogger().error(error_message)
-            out and logging.getLogger().error("stdout: \n>\t{}".format(out.replace('\n','\n>\t')))
-            err and logging.getLogger().error("stderr: \n>\t{}".format(err.replace('\n','\n>\t')))
-        else:
-            logging.getLogger().debug("rtnval: {}".format(p.returncode))
-            out and logging.getLogger().debug("stdout: \n>\t{}".format(out.replace('\n','\n>\t')))
-            err and logging.getLogger().debug("stderr: \n>\t{}".format(err.replace('\n','\n>\t')))
+        logging.getLogger().error(error_message)
+        out and logging.getLogger().error("stdout: \n>\t{}".format(out.replace('\n','\n>\t')))
+        err and logging.getLogger().error("stderr: \n>\t{}".format(err.replace('\n','\n>\t')))
 
 # map from tag to QC function
 QC_HANDLERS = {

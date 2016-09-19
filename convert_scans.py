@@ -59,7 +59,7 @@ import tempfile
 import shutil
 import re
 import pandas as pd
-import datman as dm
+import datman_utils as dm_utils
 import dicom as dcm
 import yaml
 
@@ -86,7 +86,7 @@ def debug(msg):
 
 def run(cmd):
     debug("exec: {}".format(cmd))
-    dm.utils.run(cmd, DRYRUN)
+    dm_utils.run(cmd, DRYRUN)
 
 def main():
     global VERBOSE
@@ -102,13 +102,13 @@ def main():
 
     scan_dict = find_all_scan_data(input_dir)
 
-    config = read_yaml_settings(proj_settings)
-
-    # Will cause program to exit if --blacklist set but file cant be parsed
-    blacklist = get_blacklisted_series(blacklist_csv)
-
-    for scan_id in scan_dict.keys():
-        convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
+    # config = read_yaml_settings(proj_settings)
+    #
+    # # Will cause program to exit if --blacklist set but file cant be parsed
+    # blacklist = get_blacklisted_series(blacklist_csv)
+    #
+    # for scan_id in scan_dict.keys():
+    #     convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
 
 def find_all_scan_data(input_dir):
     """
@@ -226,7 +226,7 @@ def convert_needed_series(scan_id, scan_path, project_config, blacklist):
     output_folder, _ = os.path.split(scan_path)
     export_info = get_export_info(scan_id, project_config)
 
-    for series_folder, header in dm.utils.get_archive_headers(scan_path).items():
+    for series_folder, header in dm_utils.get_archive_headers(scan_path).items():
         description = str(header.get("SeriesDescription"))
         mangled_descr = mangle_description(description)
         series_num = str(header.get("SeriesNumber")).zfill(2)
@@ -356,7 +356,7 @@ def export_nii_command(seriesdir,outputdir,file_name):
     # move nii in tempdir to proper location
     for f in glob.glob("{}/*".format(tmpdir)):
         bn = os.path.basename(f)
-        ext = dm.utils.get_extension(f)
+        ext = dm_utils.get_extension(f)
         if bn.startswith("o") or bn.startswith("co"):
             continue
         else:
