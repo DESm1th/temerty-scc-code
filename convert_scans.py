@@ -102,13 +102,13 @@ def main():
 
     scan_dict = find_all_scan_data(input_dir)
 
-    # config = read_yaml_settings(proj_settings)
-    #
-    # # Will cause program to exit if --blacklist set but file cant be parsed
-    # blacklist = get_blacklisted_series(blacklist_csv)
-    #
-    # for scan_id in scan_dict.keys():
-    #     convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
+    config = read_yaml_settings(proj_settings)
+
+    # Will cause program to exit if --blacklist set but file cant be parsed
+    blacklist = get_blacklisted_series(blacklist_csv)
+
+    for scan_id in scan_dict.keys():
+        convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
 
 def find_all_scan_data(input_dir):
     """

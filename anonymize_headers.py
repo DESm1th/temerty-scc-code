@@ -79,7 +79,6 @@ def main():
     anon_ID = get_anonymized_ID(input_path, use_ID_field, given_ID)
     output_path = get_output_location(input_path, set_path)
 
-
     start_time = time.time()
 
     set_headers(input_path, output_path, anon_ID)
@@ -206,7 +205,8 @@ def get_output_location(input_path, output_path):
     Determines the location to save all the modified dicoms based on the settings
     """
     if output_path is None:
-        return input_path
+        path, folder_name = os.path.split(input_path)
+        return path
     clean_output_path = sanitize_path(output_path)
     return clean_output_path
 

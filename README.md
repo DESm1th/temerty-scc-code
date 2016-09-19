@@ -9,12 +9,12 @@
      * FSL
      * minc-toolkit
      * mricron
-     * slicer
   4. Ensure the following packages are installed. "pip install --user <package_name>"
      will install each locally and automatically for the version of python you have
      loaded.
      * docopt
      * pydicom
+     * nibabel
   5. For each project to be managed, create a directory for logs and metadata.
      Each needed metadata configuration file has a template in the 'Config Templates'
      section below.
@@ -83,7 +83,7 @@
               - ANI:           { Pattern: 'Fractional-Aniso', Formats: [nii],           Count: 1}
 
   blacklist.csv:
-  
+
   Another input to convert_scans.py. Not super useful unless you intend to use
   the rest of the datman pipeline. The series column should contain the datman
   style name of a series that has been blacklist. Reason can be anything, as
