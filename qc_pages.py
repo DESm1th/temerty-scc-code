@@ -651,6 +651,8 @@ QC_HANDLERS = {
         "VN-SPRL"       : fmri_qc,
         "SID"           : fmri_qc,
         "MID"           : fmri_qc,
+        "GNG"           : fmri_qc,
+        "ANH"           : fmri_qc,
         "DTI"           : dti_qc,
         "DTI21"         : dti_qc,
         "DTI22"         : dti_qc,

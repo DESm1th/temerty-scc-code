@@ -9,6 +9,7 @@
      * FSL
      * minc-toolkit
      * mricron
+     * slicer (Only if .nrrd file format is required)
   4. Ensure the following packages are installed. "pip install --user <package_name>"
      will install each locally and automatically for the version of python you have
      loaded.

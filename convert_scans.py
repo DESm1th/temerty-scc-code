@@ -149,10 +149,10 @@ def get_dicom(path):
 def get_scan_id(dicom_path):
     """
     Uses the dicom header to assign a scan id of the format:
-        <StudyDescription>_<InstitutionName>_<PatientID>_01_01
+        <StudyDescription>_<InstitutionName>_<PatientName>_01_01
 
-    The 01_01 fields are intended to be <timepoint>_<session#> but is not
-    currently implemented. If <PatientID> has three underscore separated fields,
+    The 01_01 fields are intended to be <timepoint>_<session#> but are not
+    currently implemented. If <PatientName> has three underscore separated fields,
     the last two fields will be taken as timepoint and session instead. Currently
     this is the only way to adjust these values.
     """
@@ -164,11 +164,13 @@ def get_scan_id(dicom_path):
 
     scan_id = header.StudyDescription + "_" + header.InstitutionName + "_"
 
-    patient_id = header.PatientID
-    if len(patient_id.split("_")) == 3:
-        scan_id += patient_id
+    patient_name = header.PatientName
+    if len(patient_name.split("_")) == 3:
+        scan_id += patient_name
+    elif len(patient_name.split("_")) == 2:
+        scan_id += patient_name + "_01"
     else:
-        scan_id += patient_id + "_01_01"
+        scan_id += patient_name + "_01_01"
 
     return scan_id
 
