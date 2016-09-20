@@ -59,29 +59,31 @@
   the header to determine which export info to use in the case of multiple scan sites
   for the given project.
 
-      ###############
-      # NEUR2MR Project Settings
-      ###############
+    ###############
+    # NEUR2MR Project Settings
+    ###############
 
-      STUDYNAME : NEUR2MR
+    STUDYNAME : NEUR2MR
 
-      Sites:
-        - CAMH :
-            ## The data to expect from this project
-            # Pattern: the regex pattern used to identify this scan from the dicom headers
-            # Formats: the list of formats to convert matching series to
-            # Count: the number of scans of this type to expect in a session
-            ExportInfo:
-              - LOC:           { Pattern: '3PlaneLoc',        Formats: [],              Count: 1}
-              - T1:            { Pattern: 'T1',               Formats: [nii],           Count: 1}
-              - RST:           { Pattern: 'Resting',          Formats: [nii],           Count: 2}
-              - GNG:           { Pattern: 'GoNoGo',           Formats: [nii],           Count: 3}
-              - NBK:           { Pattern: 'Back',             Formats: [nii],           Count: 1}
-              - DTI60-1000:    { Pattern: 'DTI-60plus5',      Formats: [nii, nrrd],     Count: 1}
-              - T2:            { Pattern: 'T2',               Formats: [nii],           Count: 1}
-              - FMAP-6.5:      { Pattern: 'TE65',             Formats: [nii],           Count: 1}
-              - FMAP-8.5:      { Pattern: 'TE85',             Formats: [nii],           Count: 1}
-              - ANI:           { Pattern: 'Fractional-Aniso', Formats: [nii],           Count: 1}
+    Sites:
+      - CAMH :
+          ## The data to expect from this project
+          # Pattern: the regex pattern used to identify this scan from the dicom headers
+          # Formats: the list of formats to convert matching series to
+          # Count: the number of scans of this type to expect in a session
+          ExportInfo:
+            - LOC:           { Pattern: '3PlaneLoc',        Formats: [],              Count: 1}
+            - T1:            { Pattern: 'T1',               Formats: [nii],           Count: 1}
+            - CAL:           { Pattern: 'Calibration',      Formats: [],              Count: 1}
+            - RST:           { Pattern: 'Resting',          Formats: [nii],           Count: 3}
+            - GNG:           { Pattern: 'GoNoGo',           Formats: [nii],           Count: 1}
+            - NBK:           { Pattern: 'Back',             Formats: [nii],           Count: 1}
+            - DTI60-1000:    { Pattern: 'DTI-60plus5',      Formats: [nii],           Count: 1}
+            - T2:            { Pattern: 'T2',               Formats: [nii],           Count: 1}
+            - FMAP-6.5:      { Pattern: 'TE65',             Formats: [nii],           Count: 1}
+            - FMAP-8.5:      { Pattern: 'TE85',             Formats: [nii],           Count: 1}
+            - PROC:          { Pattern: 'Processed',        Formats: [],              Count: 1}
+            - ANI:           { Pattern: 'Fractional-Aniso', Formats: [nii],           Count: 1}
 
   blacklist.csv:
 
@@ -90,5 +92,5 @@
   style name of a series that has been blacklist. Reason can be anything, as
   long as it doesn't contain spaces (this breaks the parsing)
 
-      series									                                          reason
-      STUDYNAME_SITENAME_SUBJECTID_TIMEPOINT_SESSION_SERIESDESCRIPTION  just-because
+      series									                                            reason
+      STUDYNAME_SITENAME_SUBJECTID_TIMEPOINT_SESSION_SERIESDESCRIPTION    just-because

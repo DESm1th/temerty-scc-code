@@ -22,7 +22,8 @@ Arguments:
                         dicom headers (unless the --make-folders option is set).
 Options:
     --make-folders      Create folders, if needed, that match the desired
-                        path for the extracted scans.
+                        path for the extracted scans. Folder permissions will be
+                        set to 775
 
     --add-path STR      Appends STR to the path once a folder is found. The
                         resulting path for extraction will be of the form
@@ -153,6 +154,7 @@ def extract_scan(scan, output_path, make_dirs):
     if make_dirs:
         try:
             os.makedirs(output_path)
+            os.chmod(output_path, 0755)
         except:
             error_message("Cannot make {}".format(output_path))
 
