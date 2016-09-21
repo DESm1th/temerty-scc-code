@@ -33,15 +33,21 @@
 
    qc-pipeline module template
 
-        #%Module
-        proc ModulesHelp { } {
-        	puts stderr "This module loads the (temerty) versions of some datman scripts"
-        }
+     #%Module
+     proc ModulesHelp { } {
+     	puts stderr "This module loads the Temerty versions of some datman scripts"
+     }
 
-        # Load dependencies
-        module load PYTHON/2.7.8-anaconda-2.1.0
+     # Load dependencies
+     module load PYTHON/2.7.8-anaconda-2.1.0
+     module load AFNI/AFNI_MAY_2014
+     module load FSL/fsl_5.0.9
+     module load MINC/minc-toolkit-1.0.07
+     module load MRICRON/lx64
 
-        prepend-path PATH	~/current/temerty-scc-code
+     prepend-path PATH	~/current/temerty-scc-code
+
+     prepend-path PYTHONPATH	~/current/temerty-scc-code
 
 
 # Config Templates

@@ -100,6 +100,9 @@ def main():
     DEBUG           = arguments['--debug']
     DRYRUN          = arguments['--dry-run']
 
+    input_dir = sanitize_path(input_dir)
+    proj_settings = sanitize_path(proj_settings)
+
     scan_dict = find_all_scan_data(input_dir)
 
     config = read_yaml_settings(proj_settings)
@@ -109,6 +112,20 @@ def main():
 
     for scan_id in scan_dict.keys():
         convert_needed_series(scan_id, scan_dict[scan_id], config, blacklist)
+
+def sanitize_path(user_path):
+    """
+    Ensures an absolute and normalized path is always used so path dependent
+    functions don't mysteriously fail
+
+    os.path.abspath is not used, because symbolic links may cause a broken
+    path to be generated.
+    """
+    curr_path = os.environ['PWD']
+    abs_path = os.path.join(curr_path, user_path)
+    clean_path = os.path.normpath(abs_path)
+
+    return clean_path
 
 def find_all_scan_data(input_dir):
     """
