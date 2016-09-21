@@ -154,7 +154,7 @@ def extract_scan(scan, output_path, make_dirs):
     if make_dirs:
         try:
             os.makedirs(output_path)
-            os.chmod(output_path, 0755)
+            os.chmod(output_path, 0770)
         except:
             error_message("Cannot make {}".format(output_path))
 
