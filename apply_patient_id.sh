@@ -37,6 +37,6 @@ do
       new_path="${path}/${ID}"
       mv $pt_folder $new_path
     fi
-    break
+    break;
   done
 done

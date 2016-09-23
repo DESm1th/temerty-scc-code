@@ -103,7 +103,8 @@ def main():
     input_dir = sanitize_path(input_dir)
     proj_settings = sanitize_path(proj_settings)
 
-    scan_dict = find_all_scan_data(input_dir)
+    scans = get_scans(input_dir)
+    scan_dict = assign_ids(scans)
 
     config = read_yaml_settings(proj_settings)
 
@@ -127,27 +128,40 @@ def sanitize_path(user_path):
 
     return clean_path
 
-def find_all_scan_data(input_dir):
-    """
-    Returns a dictionary of datman style subject ids mapped to an absolute
-    path where the scan folder is stored.
-    """
-    all_scans = {}
-    for sub_dir in glob.glob(os.path.join(input_dir, '*')):
-        dicom = get_dicom(sub_dir)
-        if dicom is None:
-            # sub_dir is not a scan folder of dicoms
-            continue
+def get_scans(path):
+    if not os.path.isdir(path):
+        return []
 
-        scan_id = get_scan_id(dicom)
+    if is_scan(path):
+        return [path]
 
+    scans = []
+    for folder in glob.glob(os.path.join(path, '*')):
+        scans.extend(get_scans(folder))
+
+    return scans
+
+def is_scan(path):
+    for dicom in glob.glob(os.path.join(path, '*/*.dcm')):
+        # If the folder structure matches and a dicom can be found
+        # this is a scan
+        return True
+    return False
+
+def assign_ids(scans):
+    id_map = {}
+    for scan in scans:
+        dicom = get_dicom(scan)
+        guessed_id = guess_scan_id(dicom)
+        scan_id = resolve_id_conflict(guessed_id, dicom, id_map)
         if scan_id is None:
+            error("Cannot assign ID to {} because a session collected at a"\
+                  "later date has been assigned an earlier session number during"\
+                  "a previous export. Please change the session number manually or delete"\
+                  "all exports for this subject and rerun".format(scan))
             continue
-
-        scan_path = get_scan_folder_path(dicom)
-        all_scans[scan_id] = scan_path
-
-    return all_scans
+        id_map[scan_id] = scan
+    return id_map
 
 def get_dicom(path):
     """
@@ -163,15 +177,17 @@ def get_dicom(path):
                 return os.path.join(root, fname)
     return None
 
-def get_scan_id(dicom_path):
+def guess_scan_id(dicom_path, scan_dict = None):
     """
     Uses the dicom header to assign a scan id of the format:
-        <StudyDescription>_<InstitutionName>_<PatientName>_01_01
+        <StudyDescription>_<InstitutionName>_<PatientName>_<timepoint>_<session>
 
-    The 01_01 fields are intended to be <timepoint>_<session#> but are not
-    currently implemented. If <PatientName> has three underscore separated fields,
-    the last two fields will be taken as timepoint and session instead. Currently
-    this is the only way to adjust these values.
+    Timepoint: If PatientName ends in a field of the form _digits
+    that field will be taken as the time point. Otherwise, time point will be
+    assigned to be _01
+
+    Session: Assigned to be 01, but can be incremented with resolve_id_conflict()
+
     """
     try:
         header = dcm.read_file(dicom_path)
@@ -182,22 +198,60 @@ def get_scan_id(dicom_path):
     scan_id = header.StudyDescription + "_" + header.InstitutionName + "_"
 
     patient_name = header.PatientName
-    if len(patient_name.split("_")) == 3:
-        scan_id += patient_name
-    elif len(patient_name.split("_")) == 2:
+    name_fields = patient_name.split('_')
+    last_field = len(name_fields) - 1
+
+    if name_fields[last_field].isdigit():
         scan_id += patient_name + "_01"
     else:
         scan_id += patient_name + "_01_01"
 
     return scan_id
 
-def get_scan_folder_path(dicom_path):
-    """
-    Returns the path to the scan folder that the given dicom belongs to
-    """
-    series_path, fname = os.path.split(dicom_path)
-    scan_path, series_folder = os.path.split(series_path)
-    return scan_path
+def resolve_id_conflict(scan_id, current_dicom, id_map):
+    if scan_id not in id_map.keys():
+        return scan_id
+
+    other_scan = id_map[scan_id]
+    other_dicom = get_dicom(other_scan)
+    print("Using dicom {} for scan_id {}. Resolving to make room for {}".format(
+           other_dicom, scan_id, current_dicom))
+
+    new_id = increment_session(scan_id)
+    print("new id will be {}".format(new_id))
+    if session_date(other_dicom) > session_date(current_dicom):
+        print("Previous scan at this id is newer. Shifting old scans.")
+        if previously_exported(other_scan, scan_id):
+            return None
+        new_other_id = resolve_id_conflict(new_id, other_dicom, id_map)
+        id_map[new_other_id] = id_map.pop(scan_id)
+        return scan_id
+    else:
+        print("Current scan is newer. Attempting to resolve again")
+        return resolve_id_conflict(new_id, current_dicom, id_map)
+
+def increment_session(scan_id):
+    id_fields = scan_id.split("_")
+    last_field = len(id_fields) - 1
+    session_num = int(id_fields[last_field])
+    session_num += 1
+    id_fields[last_field] = str(session_num).zfill(2)
+    return "_".join(id_fields)
+
+def session_date(dicom):
+    header = dcm.read_file(dicom)
+    session_date = header.AcquisitionDate
+    return session_date
+
+def previously_exported(scan, scan_id):
+    parent_folder = os.path.split(scan)[0]
+
+    for fmt in exporters.keys():
+        export_dir = os.path.join(parent_folder, "{}".format(fmt))
+        for exported_file in glob.glob(os.path.join(export_dir, "*{}*".format(scan_id))):
+            # An item from scan has been exported with this ID for one or more format.
+            return True
+    return False
 
 def read_yaml_settings(yaml_file):
     try:
