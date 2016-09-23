@@ -100,3 +100,25 @@
 
       series									                                            reason
       STUDYNAME_SITENAME_SUBJECTID_TIMEPOINT_SESSION_SERIESDESCRIPTION    just-because
+
+# Naming Conventions
+
+  The outputs of this qc pipeline use the datman naming conventions. All IDs
+  created for participant data will be of the form the form
+  STUDY_SITE_SUBJECTID_TIMEPOINT_SESSION.
+
+  Most of this information is taken from the dicom headers. To set the timepoint
+  for some scan, the PatientName field of the dicom headers should end in an
+  underscore followed by the number of the timepoint. If this field isn't present
+  at the end of the PatientName, then the timepoint will be set to 01 by default.
+
+  Session number is set when convert_scans.py is run. It finds all dicoms with
+  an ID that would match it for STUDY_SITE_SUBJECTID_TIMEPOINT and then calculates
+  session numbers for each scan in the set by comparing their dates.
+
+  __WARNING:__ If your scans are being uploaded and converted to other formats out of
+  order convert_scans.py may ignore some of your new data. For example, if a participant
+  with two sessions has the second session uploaded, unzipped, and converted to nifti
+  and then later on the first scan is found the first scan will be ignored until
+  the second one (which will have been mistakenly assigned session number 1) has
+  been manually renamed or all of its outputs have been deleted.

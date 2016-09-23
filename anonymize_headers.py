@@ -28,7 +28,8 @@ Options:
 
     --output-path DIR           Copy the results of anonymization into the given
                                 directory rather than overwriting the original
-                                archive
+                                archive. Non-dicom files and folders will not
+                                be copied to the new location.
 
     -v, --verbose               Print messages for intermediate steps
 

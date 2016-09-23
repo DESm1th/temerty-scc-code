@@ -29,6 +29,9 @@ Options:
                         resulting path for extraction will be of the form
                         <extract_dir>/<PatientName>/<STR>
 
+    --ignore-list FILE  Path to a text file containing a list of paths to zip files
+                        in scans_dir that should be ignored.
+
     -v, --verbose       Print messages to the terminal about which scans are
                         being extracted and to where
 """
@@ -62,15 +65,25 @@ def main():
     extract_dir = arguments['<extract_dir>']
     make_dirs   = arguments['--make-folders']
     path_ext    = arguments['--add-path']
+    ignore      = arguments['--ignore-list']
     VERBOSE     = arguments['--verbose']
 
     if path_ext is None:
         path_ext = ""
 
+    if ignore is not None:
+        ignore_file = sanitize_path(ignore)
+        ignore_list = get_ignored_files(ignore_file)
+    else:
+        ignore_list = []
+
     scans_dir = sanitize_path(scans_dir)
     extract_dir = sanitize_path(extract_dir)
 
     for scan in glob.glob("{}/*.zip".format(scans_dir)):
+        if scan in ignore_list:
+            continue
+
         scan_id = get_scan_id(scan)
 
         if scan_id is None:
@@ -96,6 +109,17 @@ def sanitize_path(user_path):
     clean_path = os.path.normpath(abs_path)
 
     return clean_path
+
+def get_ignored_files(list_path):
+    scan_list = []
+    try:
+        with open(list_path, 'r') as files:
+            for scan in files:
+                scan_list.append(scan.strip('\n'))
+    except:
+        error_message("Cannot read ignore list. Check the path and ensure each"\
+              " file in the list is on a separate line")
+    return scan_list
 
 def get_scan_id(scan):
     """
