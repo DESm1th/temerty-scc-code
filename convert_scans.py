@@ -224,20 +224,15 @@ def resolve_id_conflict(scan_id, current_dicom, id_map):
 
     other_scan = id_map[scan_id]
     other_dicom = get_dicom(other_scan)
-    print("Using dicom {} for scan_id {}. Resolving to make room for {}".format(
-           other_dicom, scan_id, current_dicom))
-
     new_id = increment_session(scan_id)
-    print("new id will be {}".format(new_id))
+    
     if session_date(other_dicom) > session_date(current_dicom):
-        print("Previous scan at this id is newer. Shifting old scans.")
         if previously_exported(other_scan, scan_id):
             return None
         new_other_id = resolve_id_conflict(new_id, other_dicom, id_map)
         id_map[new_other_id] = id_map.pop(scan_id)
         return scan_id
     else:
-        print("Current scan is newer. Attempting to resolve again")
         return resolve_id_conflict(new_id, current_dicom, id_map)
 
 def increment_session(scan_id):
