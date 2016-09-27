@@ -215,7 +215,7 @@ def guess_scan_id(dicom_path):
 def resolve_id_conflict(scan_id, current_dicom, id_map):
     """
     If a scan in id_map already has scan_id, increments the
-    session number of the scan that has a later AcquisitionDate.
+    session number of the scan that has a later StudyDate.
     Conflicts between this new scan and the id_map are then resolved until
     all scans in id_map have a unique id.
     """
@@ -225,7 +225,7 @@ def resolve_id_conflict(scan_id, current_dicom, id_map):
     other_scan = id_map[scan_id]
     other_dicom = get_dicom(other_scan)
     new_id = increment_session(scan_id)
-    
+
     if session_date(other_dicom) > session_date(current_dicom):
         if previously_exported(other_scan, scan_id):
             return None
@@ -245,7 +245,7 @@ def increment_session(scan_id):
 
 def session_date(dicom):
     header = dcm.read_file(dicom)
-    session_date = header.AcquisitionDate
+    session_date = header.StudyDate
     return session_date
 
 def previously_exported(scan, scan_id):
