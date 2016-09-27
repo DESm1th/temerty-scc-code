@@ -177,17 +177,19 @@ def get_dicom(path):
                 return os.path.join(root, fname)
     return None
 
-def guess_scan_id(dicom_path, scan_dict = None):
+def guess_scan_id(dicom_path):
     """
     Uses the dicom header to assign a scan id of the format:
         <StudyDescription>_<InstitutionName>_<PatientName>_<timepoint>_<session>
 
-    Timepoint: If PatientName ends in a field of the form _digits
-    that field will be taken as the time point. Otherwise, time point will be
-    assigned to be _01
+    Timepoint: If PatientName is of the form someid_somenum the _somenum will
+    be taken as timepoint. Otherwise, timepoint will be assigned to be _01
 
     Session: Assigned to be 01, but can be incremented with resolve_id_conflict()
 
+    Note: If PatientName contains more than two underscore separated fields
+    the fields will be merged and the default time point of _01 will be assigned
+    even if the last field is numeric. e.g. ABC_DEF_008 will become ACBDEF008_01_01
     """
     try:
         header = dcm.read_file(dicom_path)
@@ -199,16 +201,24 @@ def guess_scan_id(dicom_path, scan_dict = None):
 
     patient_name = header.PatientName
     name_fields = patient_name.split('_')
-    last_field = len(name_fields) - 1
+    last_index = len(name_fields) - 1
 
-    if name_fields[last_field].isdigit():
-        scan_id += patient_name + "_01"
+    if len(name_fields) == 2 and name_fields[last_index].isdigit():
+        time_and_session = "_" + name_fields.pop(last_index) + "_01"
     else:
-        scan_id += patient_name + "_01_01"
+        time_and_session = "_01_01"
+
+    scan_id += ''.join(name_fields) + time_and_session
 
     return scan_id
 
 def resolve_id_conflict(scan_id, current_dicom, id_map):
+    """
+    If a scan in id_map already has scan_id, increments the
+    session number of the scan that has a later AcquisitionDate.
+    Conflicts between this new scan and the id_map are then resolved until
+    all scans in id_map have a unique id.
+    """
     if scan_id not in id_map.keys():
         return scan_id
 

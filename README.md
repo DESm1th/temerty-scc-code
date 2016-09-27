@@ -108,13 +108,15 @@
   STUDY_SITE_SUBJECTID_TIMEPOINT_SESSION.
 
   Most of this information is taken from the dicom headers. To set the timepoint
-  for some scan, the PatientName field of the dicom headers should end in an
-  underscore followed by the number of the timepoint. If this field isn't present
-  at the end of the PatientName, then the timepoint will be set to 01 by default.
+  for some scan the PatientName field of the dicom headers must be of the form
+  scanid_timepoint (e.g. ABCDEF_02). If there are more than two underscore
+  separated fields or if the second field is not numeric the timepoint will be
+  set to the default of 01.
 
-  Session number is set when convert_scans.py is run. It finds all dicoms with
-  an ID that would match it for STUDY_SITE_SUBJECTID_TIMEPOINT and then calculates
-  session numbers for each scan in the set by comparing their dates.
+  Session number is set when convert_scans.py is run. It finds all scans in the
+  given directory and then among scans that match on the
+  STUDY_SITE_SUBJECTID_TIMEPOINT fields it sorts them by comparing their dates
+  and assigns them session numbers based on that sorted order.
 
   __WARNING:__ If your scans are being uploaded and converted to other formats out of
   order convert_scans.py may ignore some of your new data. For example, if a participant
