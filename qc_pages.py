@@ -520,7 +520,7 @@ def rest_qc(fpath, qcpath, qchtml):
 
 def pdt2_qc(fpath, qcpath, qchtml):
     ## split PD and T2 image
-    run("python dm-proc-split-pdt2.py {}".format(fpath))
+    run("dm-proc-split-pdt2.py {}".format(fpath))
     pdpath = fpath.replace('_PDT2_','_PD_')
     t2path = fpath.replace('_PDT2_','_T2_')
     pd_qc(pdpath, qcpath, qchtml)
