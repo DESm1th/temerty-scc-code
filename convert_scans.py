@@ -154,12 +154,6 @@ def assign_ids(scans):
         dicom = get_dicom(scan)
         guessed_id = guess_scan_id(dicom)
         scan_id = resolve_id_conflict(guessed_id, dicom, id_map)
-        if scan_id is None:
-            error("Cannot assign ID to {} because a session collected at a"\
-                  "later date has been assigned an earlier session number during"\
-                  "a previous export. Please change the session number manually or delete"\
-                  "all exports for this subject and rerun".format(scan))
-            continue
         id_map[scan_id] = scan
     return id_map
 
@@ -227,8 +221,6 @@ def resolve_id_conflict(scan_id, current_dicom, id_map):
     new_id = increment_session(scan_id)
 
     if session_date(other_dicom) > session_date(current_dicom):
-        if previously_exported(other_scan, scan_id):
-            return None
         new_other_id = resolve_id_conflict(new_id, other_dicom, id_map)
         id_map[new_other_id] = id_map.pop(scan_id)
         return scan_id
@@ -247,16 +239,6 @@ def session_date(dicom):
     header = dcm.read_file(dicom)
     session_date = header.StudyDate
     return session_date
-
-def previously_exported(scan, scan_id):
-    parent_folder = os.path.split(scan)[0]
-
-    for fmt in exporters.keys():
-        export_dir = os.path.join(parent_folder, "{}".format(fmt))
-        for exported_file in glob.glob(os.path.join(export_dir, "*{}*".format(scan_id))):
-            # An item from scan has been exported with this ID for one or more format.
-            return True
-    return False
 
 def read_yaml_settings(yaml_file):
     try:

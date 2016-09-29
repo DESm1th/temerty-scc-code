@@ -123,8 +123,9 @@
   and assigns them session numbers based on that sorted order.
 
   __WARNING:__ If your scans are being uploaded and converted to other formats out of
-  order convert_scans.py may ignore some of your new data. For example, if a participant
-  with two sessions has the second session uploaded, unzipped, and converted to nifti
-  and then later on the first scan is found the first scan will be ignored until
-  the second one (which will have been mistakenly assigned session number 1) has
-  been manually renamed or all of its outputs have been deleted.
+  order convert_scans.py may assign the wrong id to some outputs or simply fail
+  to convert it at all. For example, if session two for a participant is uploaded,
+  converted to .nii format and then session one is uploaded, session one may
+  never be converted and session two may be converted twice under both IDs. If
+  this situation cannot be avoided, delete all outputs for the participant
+  before running the pipeline to avoid  such errors.
