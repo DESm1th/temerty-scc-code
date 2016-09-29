@@ -10,12 +10,15 @@
      * minc-toolkit
      * mricron
      * slicer (Only if .nrrd file format is required)
+     * wkhtmltopdf (Only if .pdf QC pages are required. Listed as the Wkhtmltox
+       module on the scc)
   4. Ensure the following packages are installed. "pip install --user <package_name>"
      will install each locally and automatically for the version of python you have
      loaded.
      * docopt
      * pydicom
      * nibabel
+     * pdfkit (Only if .pdf QC pages are required. Depends on wkhtmltopdf)
   5. For each project to be managed, create a directory for logs and metadata.
      Each needed metadata configuration file has a template in the 'Config Templates'
      section below.
@@ -44,6 +47,7 @@
      module load FSL/fsl_5.0.9
      module load MINC/minc-toolkit-1.0.07
      module load MRICRON/lx64
+     module load Wkhtmltox/0.12.3
 
      prepend-path PATH	~/current/temerty-scc-code
 
