@@ -185,6 +185,10 @@ def write_qc_page(input_path, output_path, subject_id, config):
         write_qc_page_contents(qc_page, input_path, output_path, exportinfo, subject_id)
 
     if PDF_PAGES:
+        # Silence wkhtmltopdf output
+        options = {
+            'quiet': ''
+        }
         pdf.from_file(html_file, os.path.join(output_path, 'qc_{}.pdf'.format(subject_id)))
 
 def write_qc_page_header(qc_page, subject_id):
